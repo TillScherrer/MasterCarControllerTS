@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.ConstrainedExecution;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -500,15 +503,43 @@ public class Car : MonoBehaviour
             wheel3DCentersStartPoint[i] = wheel3DCenters[i] + upwardSuspensionCapVec[i] + Vector3.up * wheelRadii[i];
             wheel3DCentersEndPoint[i] = wheel3DCenters[i] + Vector3.down * looseSpringOffsetLength[i];
             wheel3DThicknesses[i] = i < 2 ? frontWheelInwardThickness + frontWheelOutwardThickness : rearWheelInwardThickness + rearWheelOutwardThickness;
+
+            if (visualWheels[i] == null) continue;
+
+            if (placeOnPhysicalWheel[i])
+            {
+                Vector3 xPosChange = i % 2 == 0 ? (i < 2 ? frontRightWheelCenter.x : rearRightWheelCenter.x) * Vector3.left * 2 : Vector3.zero;
+                Vector3 relPosition = (i < 2 ? frontRightWheelCenter : rearRightWheelCenter) + xPosChange;
+                visualWheelLocalPositions[i] = relPosition;
+                if(!(calledFromInspector && Application.isPlaying)) visualWheelLocalRotations[i] = Quaternion.Inverse(transform.rotation) * visualWheels[i].rotation;
+            }
+            else if(!(calledFromInspector && Application.isPlaying))
+            {
+                visualWheelLocalPositions[i] = transform.InverseTransformPoint(visualWheels[i].position);
+                visualWheelLocalRotations[i] = Quaternion.Inverse(transform.rotation) * visualWheels[i].rotation;
+            }
+
         }
 
-        if (calledFromInspector && Application.isPlaying) return; //everything after here in this method will not be changed from the inspector during play-Mode
 
-        for (int i = 0; i < 4; i++)
-        {
-            visualWheelLocalPositions[i] = transform.InverseTransformPoint(visualWheels[i].position);
-            visualWheelLocalRotations[i] = Quaternion.Inverse(transform.rotation) * visualWheels[i].rotation;
-        }
+
+        //if (placeOnPhysicalWheel[i])
+        //{
+        //    if (visualWheels[index] == null) return;
+        //    Vector3 xPosChange = index % 2 == 0 ? (index < 2 ? frontRightWheelCenter.vector3Value.x : rearRightWheelCenter.vector3Value.x) * Vector3.left * 2 : Vector3.zero;
+        //    Vector3 relPosition = (index < 2 ? frontRightWheelCenter.vector3Value : rearRightWheelCenter.vector3Value) + xPosChange;
+        //    visualWheels[index].position = car.transform.TransformPoint(relPosition);
+        //}
+
+
+
+        //if (calledFromInspector && Application.isPlaying) return; //everything after here in this method will not be changed from the inspector during play-Mode
+
+        //for (int i = 0; i < 4; i++)
+        //{
+        //    visualWheelLocalPositions[i] = transform.InverseTransformPoint(visualWheels[i].position);
+        //    visualWheelLocalRotations[i] = Quaternion.Inverse(transform.rotation) * visualWheels[i].rotation;
+        //}
     }
 
     public void ValidateGearSettings()
@@ -1049,6 +1080,7 @@ public class Car : MonoBehaviour
         if (Input.GetKey(SteerRightKey)) steerInput++;
         if (Input.GetKey(SteerLeftKey)) steerInput--;
 
+
         if (steerInput == 0)
         {
             if (Mathf.Abs(currentAngle) < maxDegreeChange) currentAngle = 0;
@@ -1065,12 +1097,17 @@ public class Car : MonoBehaviour
 
     void UpdateSteeringAngles(Vector3[] hitPoints)
     {
+        //Debug.DrawRay(transform.TransformPoint((wheelCenters[0] + wheelCenters[1]) * 0.5f), transform.rotation * Quaternion.Euler(0, frontSteeringAngle, 0) * Vector3.right * 10, Color.white);
+        //Debug.DrawRay(transform.TransformPoint((wheelCenters[0] + wheelCenters[1]) * 0.5f), transform.rotation * Quaternion.Euler(0, frontSteeringAngle, 0) * Vector3.left * 10, Color.white);
+        //Debug.DrawRay(transform.TransformPoint((wheelCenters[2] + wheelCenters[3]) * 0.5f), transform.rotation * Quaternion.Euler(0, rearSteeringAngle, 0) * Vector3.right * 10, Color.white);
+        //Debug.DrawRay(transform.TransformPoint((wheelCenters[2] + wheelCenters[3]) * 0.5f), transform.rotation * Quaternion.Euler(0, rearSteeringAngle, 0) * Vector3.left * 10, Color.white);
+
         // try to calculate the local position of the turning center from the Bicycle-Model to apply Ackermann-Steering
         float zDistBetweenRearAndFrontWheels = frontRightWheelCenter.z - rearRightWheelCenter.z;
-        float frontZPerX = Mathf.Sin(frontSteeringAngle * Mathf.Deg2Rad);
-        float rearZPerX = Mathf.Sin(rearSteeringAngle * Mathf.Deg2Rad);
-        float linesGettingCloserOnYPerX = frontZPerX - rearZPerX;
-        if (Mathf.Abs(linesGettingCloserOnYPerX) < 0.0000000000000001f)
+        float frontZPerX = -Mathf.Tan(frontSteeringAngle * Mathf.Deg2Rad);
+        float rearZPerX = -Mathf.Tan(rearSteeringAngle * Mathf.Deg2Rad);
+        float linesGettingCloserOnZPerX = rearZPerX - frontZPerX;
+        if (Mathf.Abs(linesGettingCloserOnZPerX) < 0.0000000000000001f)
         {
             //can not apply ackerman steering when front and rear wheels are parallel
             rawSteeringAngles[0] = frontSteeringAngle;
@@ -1082,22 +1119,24 @@ public class Car : MonoBehaviour
         else
         {
             // calculate the local position of the turning center
-            float xOfTurningCenter = zDistBetweenRearAndFrontWheels / linesGettingCloserOnYPerX; // a positive value tells how far the turning center is on the right side, a negative for the left side
+            float xOfTurningCenter = zDistBetweenRearAndFrontWheels / linesGettingCloserOnZPerX; // a positive value tells how far the turning center is on the right side, a negative for the left side
             float zDistFromFrontWheels = xOfTurningCenter * frontZPerX;
             float zDistFromRearWheels = xOfTurningCenter * rearZPerX;
+            //Debug.DrawRay(transform.TransformPoint(new Vector3(xOfTurningCenter, 0, frontRightWheelCenter.z + zDistFromFrontWheels)), Vector3.up, Color.blue);
+            //Debug.DrawRay(transform.TransformPoint(new Vector3(xOfTurningCenter, 0, rearRightWheelCenter.z + zDistFromRearWheels)), Vector3.up, Color.green);
 
             // calculate the individually adapted steering angles of ackermann steering
-            float rFrontAckermannAngle = Mathf.Atan(zDistFromFrontWheels / (xOfTurningCenter + frontRightWheelCenter.x)) * Mathf.Rad2Deg;
-            float lFrontAckermannAngle = Mathf.Atan(zDistFromFrontWheels / (xOfTurningCenter - frontRightWheelCenter.x)) * Mathf.Rad2Deg;
-            float rRearAckermannAngle = Mathf.Atan(zDistFromRearWheels / (xOfTurningCenter - rearRightWheelCenter.x)) * Mathf.Rad2Deg;
-            float lRearAckermannAngle = Mathf.Atan(zDistFromRearWheels / (xOfTurningCenter + rearRightWheelCenter.x)) * Mathf.Rad2Deg;
+            float rFrontAckermannAngle = Mathf.Atan(-zDistFromFrontWheels / (xOfTurningCenter - frontRightWheelCenter.x)) * Mathf.Rad2Deg;
+            float lFrontAckermannAngle = Mathf.Atan(-zDistFromFrontWheels / (xOfTurningCenter + frontRightWheelCenter.x)) * Mathf.Rad2Deg;
+            float rRearAckermannAngle = Mathf.Atan(-zDistFromRearWheels / (xOfTurningCenter - rearRightWheelCenter.x)) * Mathf.Rad2Deg;
+            float lRearAckermannAngle = Mathf.Atan(-zDistFromRearWheels / (xOfTurningCenter + rearRightWheelCenter.x)) * Mathf.Rad2Deg;
 
 
             //Lerp between basic steering Angle and the adapted value for Ackermann Steering. A negative value of Ackermann Steering creates "Anti-Ackermann-Steering" (which is the literal opposide)
-            rawSteeringAngles[0] = Mathf.LerpUnclamped(frontSteeringAngle, rFrontAckermannAngle, ackermanSteering);
-            rawSteeringAngles[1] = Mathf.LerpUnclamped(frontSteeringAngle, lFrontAckermannAngle, ackermanSteering);
-            rawSteeringAngles[2] = Mathf.LerpUnclamped(rearSteeringAngle, rRearAckermannAngle, ackermanSteering);
-            rawSteeringAngles[3] = Mathf.LerpUnclamped(rearSteeringAngle, lRearAckermannAngle, ackermanSteering);
+            rawSteeringAngles[0] = Mathf.LerpUnclamped(frontSteeringAngle, lFrontAckermannAngle, ackermanSteering);
+            rawSteeringAngles[1] = Mathf.LerpUnclamped(frontSteeringAngle, rFrontAckermannAngle, ackermanSteering);
+            rawSteeringAngles[2] = Mathf.LerpUnclamped(rearSteeringAngle, lRearAckermannAngle, ackermanSteering);
+            rawSteeringAngles[3] = Mathf.LerpUnclamped(rearSteeringAngle, rRearAckermannAngle, ackermanSteering);
 
             //Save the dist from Center for Arcady-Steering and Air-Steering
             float zDistFromCenter = zDistFromFrontWheels - frontRightWheelCenter.z;
@@ -1110,6 +1149,10 @@ public class Car : MonoBehaviour
         //from the rawSteeringAngle some adjustment towards the sliding direction happens here to get the definite steeringAngle
         for (int i = 0; i < 4; i++)
         {
+            //Debug.DrawRay(transform.TransformPoint(wheelCenters[i]), transform.rotation * Quaternion.Euler(0, rawSteeringAngles[i], 0) * Vector3.right * 10, Color.red);
+            //Debug.DrawRay(transform.TransformPoint(wheelCenters[i]), transform.rotation * Quaternion.Euler(0, rawSteeringAngles[i], 0) * Vector3.left * 10, Color.red);
+
+
             Vector3 fowardAtRawSteer = rb.rotation * (Quaternion.Euler(0, rawSteeringAngles[i], 0) * Vector3.forward);
             Vector3 velAtWheel = rb.GetPointVelocity(hitPoints[i]);
             Vector3 upwardPartOfVelAtWheel = Vector3.Dot(velAtWheel, transform.up) * transform.up;
@@ -1136,8 +1179,8 @@ public class Car : MonoBehaviour
 
             steeringAngles[i] = rawSteeringAngles[i] + plannedOffAngle;
 
-            Debug.DrawRay(hitPoints[i], fowardAtRawSteer.normalized * 2, Color.gray);
-            Debug.DrawRay(hitPoints[i], rb.rotation * (Quaternion.Euler(0, steeringAngles[i], 0) * Vector3.forward).normalized * 2, Color.white);
+            //Debug.DrawRay(hitPoints[i], fowardAtRawSteer.normalized * 2, Color.gray);
+            //Debug.DrawRay(hitPoints[i], rb.rotation * (Quaternion.Euler(0, steeringAngles[i], 0) * Vector3.forward).normalized * 2, Color.white);
         }
     }
 

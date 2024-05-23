@@ -1,8 +1,11 @@
 using Cinemachine;
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using TMPro;
 using Unity.VisualScripting;
+using Unity.VisualScripting.FullSerializer;
 using UnityEngine;
 
 public class CarSwapper : MonoBehaviour
@@ -27,7 +30,11 @@ public class CarSwapper : MonoBehaviour
     [SerializeField]
     TextMeshProUGUI landingText;
 
-
+    [Space(20)]
+    [SerializeField]
+    bool createMeasureFile = false;
+    //[SerializeField]
+    //string path = "";
 
 
     Car[] carsCarComponent = null;
@@ -43,7 +50,9 @@ public class CarSwapper : MonoBehaviour
     float endSpeed = 0;
     bool isCurrentlyCounting = false;
 
-
+    float prevSpeed = 0;
+    List<string> csvDataSpeed = new List<string>();
+    List<string> csvDataAcceleration = new List<string>();
 
 
 
@@ -120,7 +129,11 @@ public class CarSwapper : MonoBehaviour
         {
             isCurrentlyCounting = true;
             startSpeed = rbs[indexOfCurrentCar].velocity.magnitude;
+            prevSpeed = startSpeed;
             timer = 0;
+
+            csvDataSpeed = new List<string>();
+            csvDataAcceleration = new List<string>();
         }
         
 
@@ -131,12 +144,31 @@ public class CarSwapper : MonoBehaviour
             speedText.text = "time: " + timer;
             float currentCarSpeed = rbs[indexOfCurrentCar].velocity.magnitude;
 
+            if (createMeasureFile)
+            {
+                csvDataSpeed.Add($"{timer.ToString("F4")};{currentCarSpeed.ToString("F4")}");
+                csvDataAcceleration.Add($"{timer.ToString("F4")};{((currentCarSpeed-prevSpeed)/Time.deltaTime).ToString("F4")}");
+            }
+
+            prevSpeed = currentCarSpeed;
+
             if (Input.GetKeyUp(KeyCode.W) || currentCarSpeed>= maxSpeedOfCurrentCar)
             {
 
                 //HIER TEXTAUSGABE
                 speedText.text = "The car took " + timer + "s to reach " + currentCarSpeed + "m/s from " + startSpeed + "ms";
                 isCurrentlyCounting = false;
+
+                if (createMeasureFile)
+                {
+                    string filePathSpeed = Path.Combine(Application.streamingAssetsPath, DateTime.Now.ToString("HH- mm-ss") + "speed.csv");
+                    string filePathAccel = Path.Combine(Application.streamingAssetsPath, DateTime.Now.ToString("HH- mm-ss") + "accel.csv");
+                    File.WriteAllLines(filePathSpeed, csvDataSpeed.ToArray());
+                    File.WriteAllLines(filePathAccel, csvDataAcceleration.ToArray());
+
+                    Debug.Log($"CSV-Datei wurde geschrieben: {filePathSpeed}");
+                    Debug.Log($"CSV-Datei wurde geschrieben: {filePathAccel}");
+                }
             }
         }
 
